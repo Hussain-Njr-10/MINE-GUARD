@@ -57,6 +57,36 @@ export function SensorNode() {
     };
   }, [handleOrientation]);
 
+  // Track last published values to throttle MQTT messages
+  const lastPublishedTilt = useRef(0);
+  const lastPublishTime = useRef(0);
+
+  // Sync real-time tilt to Command Center
+  useEffect(() => {
+    if (imuStatus !== 'ACTIVE') return;
+
+    const now = Date.now();
+    const timeSinceLastPublish = now - lastPublishTime.current;
+    const tiltDiff = Math.abs(realTilt - lastPublishedTilt.current);
+
+    // Throttle to 2 updates per second (500ms), and require at least 0.2° change
+    if (timeSinceLastPublish > 500 && tiltDiff >= 0.2) {
+      lastPublishTime.current = now;
+      lastPublishedTilt.current = realTilt;
+
+      setNodeData(current => {
+        const updatedNode = {
+          ...current,
+          tilt: realTilt,
+          lastUpdated: new Date().toISOString()
+        };
+        // Publish live tilt reading to Command Center
+        commService.publishReading(updatedNode);
+        return updatedNode;
+      });
+    }
+  }, [realTilt, imuStatus]);
+
   // Presenter actions to simulate different states
   const handleSimulate = (state: NodeState) => {
     setSimulatedState(state);
