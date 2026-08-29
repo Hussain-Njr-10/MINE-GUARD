@@ -1,4 +1,5 @@
 import type { SensorNode } from '../types';
+import mqtt from 'mqtt';
 
 export type TelemetryMessage = {
   type: 'SENSOR_READING' | 'DEMO_RESET';
@@ -8,9 +9,12 @@ export type TelemetryMessage = {
 type MessageCallback = (msg: TelemetryMessage) => void;
 
 class CommunicationService {
-  private channel: BroadcastChannel | null = null;
+  private client: mqtt.MqttClient | null = null;
   private listeners: Set<MessageCallback> = new Set();
   private static instance: CommunicationService;
+  
+  // Use a unique topic string for the SIH demo to prevent collisions
+  private topic = 'mineguards/sih2026/telemetry/demo1';
 
   private constructor() {
     this.init();
@@ -24,17 +28,34 @@ class CommunicationService {
   }
 
   private init() {
-    // Abstracted connection logic.
-    // Future: Connect to MQTT / WebSocket here.
-    // For local prototype cross-tab communication:
-    if (typeof window !== 'undefined' && window.BroadcastChannel) {
-      this.channel = new BroadcastChannel('mine-guards-telemetry');
-      this.channel.onmessage = (event) => {
-        this.notifyListeners(event.data);
-      };
-    } else {
-      console.warn("BroadcastChannel not supported in this environment.");
-    }
+    if (typeof window === 'undefined') return;
+
+    // Connect to HiveMQ public broker over WebSockets
+    this.client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+
+    this.client.on('connect', () => {
+      console.log('Connected to public MQTT broker');
+      this.client?.subscribe(this.topic, (err) => {
+        if (!err) {
+          console.log('Subscribed to telemetry topic:', this.topic);
+        }
+      });
+    });
+
+    this.client.on('message', (topic, message) => {
+      if (topic === this.topic) {
+        try {
+          const parsedMsg = JSON.parse(message.toString()) as TelemetryMessage;
+          this.notifyListeners(parsedMsg);
+        } catch (e) {
+          console.error("Failed to parse MQTT message", e);
+        }
+      }
+    });
+    
+    this.client.on('error', (err) => {
+      console.error('MQTT error: ', err);
+    });
   }
 
   public subscribe(callback: MessageCallback): () => void {
@@ -54,28 +75,26 @@ class CommunicationService {
       payload: node,
     };
     
-    // Abstracted publish logic.
-    // Future: Send to MQTT / WebSocket here.
-    if (this.channel) {
-      this.channel.postMessage(message);
+    if (this.client && this.client.connected) {
+      this.client.publish(this.topic, JSON.stringify(message));
     } else {
-      // Fallback for same-window testing if channel fails
+      // Fallback for same-window testing if network fails
       this.notifyListeners(message); 
     }
   }
   
   public resetDemo() {
     const message: TelemetryMessage = { type: 'DEMO_RESET' };
-    if (this.channel) {
-      this.channel.postMessage(message);
+    if (this.client && this.client.connected) {
+      this.client.publish(this.topic, JSON.stringify(message));
     } else {
       this.notifyListeners(message);
     }
   }
   
   public cleanup() {
-    if (this.channel) {
-      this.channel.close();
+    if (this.client) {
+      this.client.end();
     }
   }
 }
