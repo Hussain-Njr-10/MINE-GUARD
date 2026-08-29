@@ -1,0 +1,23 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+@layer base {
+  body {
+    @apply bg-mine-dark text-mine-text font-sans antialiased overflow-x-hidden m-0 p-0;
+  }
+}
+
+/* Custom scrollbar for an industrial feel */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-mine-dark;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-mine-border rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-mine-muted;
+}
