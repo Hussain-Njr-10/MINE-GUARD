@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { NodeState, SensorNode as SensorNodeType } from '../types';
 import { mockNodes } from '../data/mockData';
 import { commService } from '../services/CommunicationService';
@@ -12,6 +12,51 @@ export function SensorNode() {
   const [simulatedState, setSimulatedState] = useState<NodeState>(nodeData.state);
   const [isTransmitting, setIsTransmitting] = useState(false);
 
+  // IMU State
+  const [imuStatus, setImuStatus] = useState<'IDLE' | 'ACTIVE' | 'UNAVAILABLE'>('IDLE');
+  const [realTilt, setRealTilt] = useState<number>(0);
+  const lastUpdateTime = useRef(0);
+
+  const handleOrientation = useCallback((event: DeviceOrientationEvent) => {
+    const now = Date.now();
+    if (now - lastUpdateTime.current < 100) return; // Throttle to 10fps for UI stability
+    
+    // beta is front-to-back tilt in degrees (-180 to 180)
+    if (event.beta !== null) {
+      lastUpdateTime.current = now;
+      const tilt = Math.round(Math.abs(event.beta) * 10) / 10;
+      setRealTilt(tilt);
+    }
+  }, []);
+
+  const requestImuPermission = () => {
+    if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+      (DeviceOrientationEvent as any).requestPermission()
+        .then((permissionState: string) => {
+          if (permissionState === 'granted') {
+            window.addEventListener('deviceorientation', handleOrientation);
+            setImuStatus('ACTIVE');
+          } else {
+            setImuStatus('UNAVAILABLE');
+          }
+        })
+        .catch(console.error);
+    } else {
+      if ('DeviceOrientationEvent' in window) {
+        window.addEventListener('deviceorientation', handleOrientation);
+        setImuStatus('ACTIVE');
+      } else {
+        setImuStatus('UNAVAILABLE');
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('deviceorientation', handleOrientation);
+    };
+  }, [handleOrientation]);
+
   // Presenter actions to simulate different states
   const handleSimulate = (state: NodeState) => {
     setSimulatedState(state);
@@ -24,17 +69,17 @@ export function SensorNode() {
     let newVib = nodeData.vibration;
     
     if (state === 'NORMAL') {
-      newTilt = 1.0 + Math.random() * 0.5;
+      newTilt = imuStatus === 'ACTIVE' ? realTilt : 1.0 + Math.random() * 0.5;
       newDisp = 0.0 + Math.random() * 0.2;
       newStrain = 100 + Math.random() * 30;
       newVib = 0.3 + Math.random() * 0.3;
     } else if (state === 'WARNING') {
-      newTilt = 4.0 + Math.random() * 1.5;
+      newTilt = imuStatus === 'ACTIVE' ? realTilt : 4.0 + Math.random() * 1.5;
       newDisp = 2.0 + Math.random() * 1.0;
       newStrain = 400 + Math.random() * 150;
       newVib = 2.5 + Math.random() * 1.5;
     } else if (state === 'CRITICAL') {
-      newTilt = 8.0 + Math.random() * 3.0;
+      newTilt = imuStatus === 'ACTIVE' ? realTilt : 8.0 + Math.random() * 3.0;
       newDisp = 5.0 + Math.random() * 2.0;
       newStrain = 800 + Math.random() * 200;
       newVib = 7.0 + Math.random() * 3.0;
@@ -104,38 +149,62 @@ export function SensorNode() {
           </div>
         </div>
 
-        {/* Live Parameters Preview */}
+        {/* Live Device Input */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-widest text-mine-muted flex items-center gap-2">
+              <Radio className="h-3 w-3" /> Live Device Input
+            </h3>
+            {imuStatus === 'ACTIVE' ? (
+              <span className="text-[10px] uppercase font-bold text-semantic-cyan flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-semantic-cyan animate-pulse"></span> IMU ACTIVE
+              </span>
+            ) : imuStatus === 'UNAVAILABLE' ? (
+              <span className="text-[10px] uppercase font-bold text-semantic-red flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full border border-semantic-red"></span> IMU UNAVAILABLE
+              </span>
+            ) : (
+              <button onClick={requestImuPermission} className="text-[10px] uppercase font-bold bg-semantic-cyan/20 text-semantic-cyan px-2 py-1 rounded border border-semantic-cyan/50 hover:bg-semantic-cyan/30 transition-colors">
+                ENABLE MOTION SENSOR
+              </button>
+            )}
+          </div>
+          
+          <Card className="bg-mine-panel border-semantic-cyan/30 shadow-[0_0_15px_rgba(34,211,238,0.1)]">
+            <CardContent className="p-4 flex flex-col gap-1 items-center justify-center">
+              <span className="text-xs text-mine-muted flex items-center gap-1"><ArrowUpRight className="h-3 w-3" /> Tilt</span>
+              <span className="text-3xl font-mono font-bold text-semantic-cyan">
+                {imuStatus === 'ACTIVE' ? realTilt.toFixed(1) : nodeData.tilt.toFixed(1)}°
+              </span>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Simulated Channels */}
         <div className="space-y-3">
           <h3 className="text-xs font-semibold uppercase tracking-widest text-mine-muted flex items-center gap-2">
-            <Radio className="h-3 w-3" /> Live Parameters
+            <Activity className="h-3 w-3" /> Simulated Channels
           </h3>
           
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Card className="bg-mine-panel/50">
-              <CardContent className="p-4 flex flex-col gap-1">
-                <span className="text-xs text-mine-muted flex items-center gap-1"><ArrowUpRight className="h-3 w-3" /> Tilt</span>
-                <span className="text-lg font-mono font-bold text-mine-text">{nodeData.tilt.toFixed(2)}°</span>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-mine-panel/50">
-              <CardContent className="p-4 flex flex-col gap-1">
-                <span className="text-xs text-mine-muted flex items-center gap-1"><Maximize2 className="h-3 w-3" /> Displacement</span>
-                <span className="text-lg font-mono font-bold text-mine-text">{nodeData.displacement.toFixed(2)} mm</span>
+              <CardContent className="p-3 flex flex-col gap-1">
+                <span className="text-[10px] text-mine-muted flex items-center gap-1"><Maximize2 className="h-3 w-3" /> Disp</span>
+                <span className="text-sm font-mono font-bold text-mine-text">{nodeData.displacement.toFixed(2)}</span>
               </CardContent>
             </Card>
 
             <Card className="bg-mine-panel/50">
-              <CardContent className="p-4 flex flex-col gap-1">
-                <span className="text-xs text-mine-muted flex items-center gap-1"><Activity className="h-3 w-3" /> Strain</span>
-                <span className="text-lg font-mono font-bold text-mine-text">{nodeData.strain} µε</span>
+              <CardContent className="p-3 flex flex-col gap-1">
+                <span className="text-[10px] text-mine-muted flex items-center gap-1"><Activity className="h-3 w-3" /> Strain</span>
+                <span className="text-sm font-mono font-bold text-mine-text">{nodeData.strain}</span>
               </CardContent>
             </Card>
 
             <Card className="bg-mine-panel/50">
-              <CardContent className="p-4 flex flex-col gap-1">
-                <span className="text-xs text-mine-muted flex items-center gap-1"><Zap className="h-3 w-3" /> Vibration</span>
-                <span className="text-lg font-mono font-bold text-mine-text">{nodeData.vibration.toFixed(2)} mm/s</span>
+              <CardContent className="p-3 flex flex-col gap-1">
+                <span className="text-[10px] text-mine-muted flex items-center gap-1"><Zap className="h-3 w-3" /> Vib</span>
+                <span className="text-sm font-mono font-bold text-mine-text">{nodeData.vibration.toFixed(2)}</span>
               </CardContent>
             </Card>
           </div>
