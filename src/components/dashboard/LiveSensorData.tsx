@@ -37,10 +37,25 @@ export function LiveSensorData({ selectedNodeId }: LiveSensorDataProps) {
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-6">
-          <div className="bg-mine-dark rounded border border-mine-border p-3 relative overflow-hidden">
-            <div className={`absolute top-0 right-0 w-16 h-16 ${node.state === 'CRITICAL' ? 'bg-semantic-red/5' : 'bg-semantic-amber/5'} rounded-bl-full z-0`}></div>
-            <p className="text-xs text-mine-muted mb-1 relative z-10 flex items-center gap-1"><ArrowUpRight className="h-3 w-3" /> Tilt</p>
-            <p className={`text-lg font-mono font-bold ${node.state === 'CRITICAL' ? 'text-semantic-red' : node.state === 'WARNING' ? 'text-semantic-amber' : 'text-mine-text'} relative z-10`}>{node.tilt.toFixed(1)}°</p>
+          <div className="bg-mine-dark rounded border border-mine-border p-3 relative overflow-hidden flex flex-col justify-between">
+            {(() => {
+              const tiltSeverity = node.tilt >= 8 ? 'CRITICAL' : node.tilt >= 4 ? 'WARNING' : 'NORMAL';
+              const tiltColor = tiltSeverity === 'CRITICAL' ? 'text-semantic-red' : tiltSeverity === 'WARNING' ? 'text-semantic-amber' : 'text-mine-text';
+              return (
+                <>
+                  <div className={`absolute top-0 right-0 w-16 h-16 ${tiltSeverity === 'CRITICAL' ? 'bg-semantic-red/5' : tiltSeverity === 'WARNING' ? 'bg-semantic-amber/5' : ''} rounded-bl-full z-0`}></div>
+                  <div className="flex items-center justify-between mb-1 relative z-10">
+                    <p className="text-xs text-mine-muted flex items-center gap-1"><ArrowUpRight className="h-3 w-3" /> Tilt</p>
+                    {tiltSeverity !== 'NORMAL' && (
+                      <span className={`text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded border ${tiltSeverity === 'CRITICAL' ? 'bg-semantic-red/10 text-semantic-red border-semantic-red/30' : 'bg-semantic-amber/10 text-semantic-amber border-semantic-amber/30'}`}>
+                        {tiltSeverity}
+                      </span>
+                    )}
+                  </div>
+                  <p className={`text-lg font-mono font-bold ${tiltColor} relative z-10`}>{node.tilt.toFixed(1)}°</p>
+                </>
+              );
+            })()}
           </div>
           
           <div className="bg-mine-dark rounded border border-mine-border p-3 relative overflow-hidden">
