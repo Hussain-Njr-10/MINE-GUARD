@@ -185,13 +185,11 @@ class SimulationEngine {
         lastUpdated: now
       };
 
-      // Recalculate status based on thresholds
-      const newState = this.calculateStatus(updatedNode);
-      if (newState !== updatedNode.state) {
-        updatedNode.state = newState;
-        this.generateAlert(updatedNode);
-      }
-
+      // We purposely DO NOT recalculate status (WARNING/CRITICAL) during the random tick.
+      // This prevents background simulated nodes from randomly crossing thresholds and spamming
+      // the dashboard with fake alerts during a live demo. Only physical device overrides
+      // or manual presenter buttons will trigger state changes and alerts.
+      
       return updatedNode;
     });
 
