@@ -314,13 +314,6 @@ class SimulationEngine {
       timestamp: new Date().toISOString()
     };
 
-    if (this.state.alerts.length > 0) {
-        const lastAlert = this.state.alerts[0];
-        if (lastAlert.nodeId === newAlert.nodeId && lastAlert.state === newAlert.state) {
-            return;
-        }
-    }
-
     this.state.alerts = [newAlert, ...this.state.alerts].slice(0, 20);
   }
 
