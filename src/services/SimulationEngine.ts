@@ -1,5 +1,7 @@
 import type { SensorNode, MineZone, SystemStatus, Alert, Recommendation, TrendDataPoint, NodeState } from '../types';
 import { mockNodes, mockZones, mockSystemStatus, mockAlerts, mockRecommendations, mockTrendData } from '../data/mockData';
+import { commService } from './CommunicationService';
+import type { TelemetryMessage } from './CommunicationService';
 
 type SimulationState = {
   nodes: SensorNode[];
@@ -18,6 +20,10 @@ class SimulationEngine {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private isRunning: boolean = true;
   private updateIntervalMs: number = 3000;
+
+  // Track nodes that are being driven by physical devices / remote MQTT
+  // If a node receives a real update, we pause simulation drift for it for 15 seconds
+  private hardwareOverrides: Record<string, number> = {};
 
   // Base values for nodes to drift around when NORMAL
   private baseValues: Record<string, { tilt: number; displacement: number; strain: number; vibration: number }> = {};
@@ -59,9 +65,37 @@ class SimulationEngine {
       }
     });
 
+    // Listen to real hardware / remote MQTT updates
+    commService.subscribe((msg: TelemetryMessage) => {
+      if (msg.type === 'SENSOR_READING' && msg.payload) {
+        this.handleExternalReading(msg.payload);
+      } else if (msg.type === 'DEMO_RESET') {
+        // Optional: Reset state if needed
+      }
+    });
+
     if (this.isRunning) {
       this.start();
     }
+  }
+
+  private handleExternalReading(nodePayload: SensorNode) {
+    const index = this.state.nodes.findIndex(n => n.id === nodePayload.id);
+    if (index === -1) return;
+
+    // Mark this node as hardware-overridden (pause fake drift for 15s)
+    this.hardwareOverrides[nodePayload.id] = Date.now() + 15000;
+
+    const oldState = this.state.nodes[index].state;
+    this.state.nodes[index] = nodePayload;
+
+    if (nodePayload.state !== oldState && (nodePayload.state === 'WARNING' || nodePayload.state === 'CRITICAL')) {
+      this.generateAlert(nodePayload);
+    }
+
+    this.updateZones();
+    this.updateSystemStatus();
+    this.notifyListeners();
   }
 
   public subscribe(listener: StateListener): () => void {
@@ -102,6 +136,11 @@ class SimulationEngine {
     const now = new Date().toISOString();
 
     const updatedNodes = this.state.nodes.map(node => {
+      // Check if this node is currently overridden by a real device (MQTT)
+      if (this.hardwareOverrides[node.id] && Date.now() < this.hardwareOverrides[node.id]) {
+        return node; // Skip random drift and just return the real device's value
+      }
+
       // Small random drift
       const drift = () => (Math.random() - 0.5) * 0.1;
       
@@ -312,6 +351,9 @@ class SimulationEngine {
     };
 
     this.state.nodes[nodeIndex] = updatedNode;
+    
+    // Broadcast this manual override to all other devices viewing the dashboard via MQTT
+    commService.publishReading(updatedNode);
     
     if (newState === 'WARNING' || newState === 'CRITICAL') {
         this.generateAlert(updatedNode);
