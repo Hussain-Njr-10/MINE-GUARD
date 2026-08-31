@@ -60,16 +60,31 @@ export function SensorNode() {
   }, [handleOrientation]);
 
   // Track last published values to throttle IMU messages
-
+  const lastPublishTime = useRef(0);
+  const lastPublishedTilt = useRef(0);
 
   // Sync real-time tilt to Command Center
   useEffect(() => {
     if (imuStatus !== 'ACTIVE' || !nodeData) return;
 
-    // For this simulation upgrade, we simply use the global updateNodeState if needed, 
-    // but the engine will overwrite it. 
-    // To properly support the IMU, we'd need to pause engine updates for this node.
-    // For the demo, the manual presenter controls are more reliable.
+    const now = Date.now();
+    const timeSinceLastPublish = now - lastPublishTime.current;
+    const tiltDiff = Math.abs(realTilt - lastPublishedTilt.current);
+
+    // Throttle to 2 updates per second (500ms), and require at least 0.2° change
+    if (timeSinceLastPublish > 500 && tiltDiff > 0.2) {
+      lastPublishTime.current = now;
+      lastPublishedTilt.current = realTilt;
+
+      import('../services/CommunicationService').then(({ commService }) => {
+        const updatedNode = {
+          ...nodeData,
+          tilt: realTilt,
+          lastUpdated: new Date().toISOString()
+        };
+        commService.publishReading(updatedNode);
+      });
+    }
   }, [realTilt, imuStatus, nodeData]);
 
   // Presenter actions to simulate different states
