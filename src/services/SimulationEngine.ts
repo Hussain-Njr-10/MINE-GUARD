@@ -245,19 +245,25 @@ class SimulationEngine {
   }
 
   private updateSystemStatus() {
-    let maxRisk = 12; // Baseline
     const criticalNodes = this.state.nodes.filter(n => n.state === 'CRITICAL').length;
     const warningNodes = this.state.nodes.filter(n => n.state === 'WARNING').length;
 
-    if (criticalNodes > 0) {
-      maxRisk = 75 + (criticalNodes * 5);
-    } else if (warningNodes > 0) {
-      maxRisk = 40 + (warningNodes * 5);
+    // Calculate dynamic overall risk based on the highest individual node risks
+    const allRisks = this.state.nodes.map(n => this.calculateRiskScore(n));
+    allRisks.sort((a, b) => b - a);
+    
+    // Weighted average of the top 3 risk scores (gives a dynamic but smooth overall system risk)
+    let dynamicRisk = 12;
+    if (allRisks.length > 0) {
+       dynamicRisk = (allRisks[0] * 0.6) + ((allRisks[1] || 0) * 0.3) + ((allRisks[2] || 0) * 0.1);
     }
+
+    // Add a tiny bit of random jitter so it constantly updates and feels "live"
+    dynamicRisk += (Math.random() - 0.5) * 2;
 
     this.state.systemStatus = {
       ...this.state.systemStatus,
-      overallRisk: Math.min(100, maxRisk),
+      overallRisk: Math.max(0, Math.min(100, Math.round(dynamicRisk))),
       activeNodes: this.state.nodes.length,
       criticalAlerts: criticalNodes,
       warnings: warningNodes
