@@ -87,6 +87,11 @@ class SimulationEngine {
     this.hardwareOverrides[nodePayload.id] = Date.now() + 15000;
 
     const oldState = this.state.nodes[index].state;
+    
+    // Always recalculate state based on the raw sensor values coming from hardware
+    const calculatedState = this.calculateStatus(nodePayload);
+    nodePayload.state = calculatedState;
+    
     this.state.nodes[index] = nodePayload;
 
     if (nodePayload.state !== oldState && (nodePayload.state === 'WARNING' || nodePayload.state === 'CRITICAL')) {
