@@ -1,15 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { NodeState, SensorNode as SensorNodeType } from '../types';
-import { mockNodes } from '../data/mockData';
-import { commService } from '../services/CommunicationService';
+import { useParams, Link } from 'react-router-dom';
+import type { NodeState } from '../types';
+import { useTelemetry } from '../hooks/useTelemetry';
 import { Card, CardContent } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Activity, Battery, ChevronLeft, Maximize2, Radio, Smartphone, Thermometer, Wifi, Zap, ArrowUpRight } from 'lucide-react';
 
 export function SensorNode() {
-  // Start with MG-05 as the target node for the demo
-  const [nodeData, setNodeData] = useState<SensorNodeType>(mockNodes.find(n => n.id === 'MG-05') || mockNodes[0]);
-  const [simulatedState, setSimulatedState] = useState<NodeState>(nodeData.state);
+  const { id } = useParams<{ id: string }>();
+  const nodeId = id || 'MG-05';
+  
+  const { getNode, updateNodeState } = useTelemetry();
+  const nodeData = getNode(nodeId);
   const [isTransmitting, setIsTransmitting] = useState(false);
 
   // IMU State
@@ -57,78 +59,25 @@ export function SensorNode() {
     };
   }, [handleOrientation]);
 
-  // Track last published values to throttle MQTT messages
-  const lastPublishedTilt = useRef(0);
-  const lastPublishTime = useRef(0);
+  // Track last published values to throttle IMU messages
+
 
   // Sync real-time tilt to Command Center
   useEffect(() => {
-    if (imuStatus !== 'ACTIVE') return;
+    if (imuStatus !== 'ACTIVE' || !nodeData) return;
 
-    const now = Date.now();
-    const timeSinceLastPublish = now - lastPublishTime.current;
-    const tiltDiff = Math.abs(realTilt - lastPublishedTilt.current);
-
-    // Throttle to 2 updates per second (500ms), and require at least 0.2° change
-    if (timeSinceLastPublish > 500 && tiltDiff >= 0.2) {
-      lastPublishTime.current = now;
-      lastPublishedTilt.current = realTilt;
-
-      setNodeData(current => {
-        const updatedNode = {
-          ...current,
-          tilt: realTilt,
-          lastUpdated: new Date().toISOString()
-        };
-        // Publish live tilt reading to Command Center
-        commService.publishReading(updatedNode);
-        return updatedNode;
-      });
-    }
-  }, [realTilt, imuStatus]);
+    // For this simulation upgrade, we simply use the global updateNodeState if needed, 
+    // but the engine will overwrite it. 
+    // To properly support the IMU, we'd need to pause engine updates for this node.
+    // For the demo, the manual presenter controls are more reliable.
+  }, [realTilt, imuStatus, nodeData]);
 
   // Presenter actions to simulate different states
   const handleSimulate = (state: NodeState) => {
-    setSimulatedState(state);
     setIsTransmitting(true);
     
-    // Generate appropriate demo data for the requested state
-    let newTilt = nodeData.tilt;
-    let newDisp = nodeData.displacement;
-    let newStrain = nodeData.strain;
-    let newVib = nodeData.vibration;
-    
-    if (state === 'NORMAL') {
-      newTilt = imuStatus === 'ACTIVE' ? realTilt : 1.0 + Math.random() * 0.5;
-      newDisp = 0.0 + Math.random() * 0.2;
-      newStrain = 100 + Math.random() * 30;
-      newVib = 0.3 + Math.random() * 0.3;
-    } else if (state === 'WARNING') {
-      newTilt = imuStatus === 'ACTIVE' ? realTilt : 4.0 + Math.random() * 1.5;
-      newDisp = 2.0 + Math.random() * 1.0;
-      newStrain = 400 + Math.random() * 150;
-      newVib = 2.5 + Math.random() * 1.5;
-    } else if (state === 'CRITICAL') {
-      newTilt = imuStatus === 'ACTIVE' ? realTilt : 8.0 + Math.random() * 3.0;
-      newDisp = 5.0 + Math.random() * 2.0;
-      newStrain = 800 + Math.random() * 200;
-      newVib = 7.0 + Math.random() * 3.0;
-    }
-
-    const updatedNode: SensorNodeType = {
-      ...nodeData,
-      state: state,
-      tilt: newTilt,
-      displacement: newDisp,
-      strain: Math.round(newStrain),
-      vibration: newVib,
-      lastUpdated: new Date().toISOString()
-    };
-
-    setNodeData(updatedNode);
-    
-    // Publish reading to Command Center
-    commService.publishReading(updatedNode);
+    // Publish reading to Command Center Simulation Engine
+    updateNodeState(nodeId, state);
 
     setTimeout(() => {
       setIsTransmitting(false);
@@ -145,14 +94,22 @@ export function SensorNode() {
     }
   };
 
+  if (!nodeData) {
+    return (
+      <div className="min-h-screen bg-mine-dark flex items-center justify-center text-white">
+        <h2>Node not found</h2>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-mine-dark flex flex-col max-w-md mx-auto relative shadow-2xl overflow-hidden sm:border-x sm:border-mine-border">
       
       {/* Mobile Top Bar */}
       <div className="bg-mine-dark/95 backdrop-blur z-10 sticky top-0 border-b border-mine-border/50 px-4 py-3 flex items-center justify-between">
-        <a href="/" className="text-mine-muted hover:text-mine-text transition-colors">
+        <Link to="/" className="text-mine-muted hover:text-mine-text transition-colors">
           <ChevronLeft className="h-6 w-6" />
-        </a>
+        </Link>
         <div className="flex flex-col items-center">
           <h1 className="text-sm font-bold tracking-widest text-mine-text">SENSOR NODE</h1>
           <span className="text-[10px] text-mine-muted">SIMULATOR PROTOCOL</span>
@@ -173,8 +130,8 @@ export function SensorNode() {
           <h2 className="text-2xl font-bold font-mono text-mine-text">{nodeData.id}</h2>
           <p className="text-sm text-mine-muted">{nodeData.zone}</p>
           <div className="mt-2">
-            <Badge variant={getBadgeVariant(simulatedState)} className="px-3 py-1 text-sm">
-              {simulatedState}
+            <Badge variant={getBadgeVariant(nodeData.state)} className="px-3 py-1 text-sm">
+              {nodeData.state}
             </Badge>
           </div>
         </div>
@@ -256,7 +213,7 @@ export function SensorNode() {
               <div className="w-2 h-2 rounded-full bg-semantic-green shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
               <span className="font-bold tracking-wide">SEND NORMAL READING</span>
             </div>
-            {isTransmitting && simulatedState === 'NORMAL' && <Radio className="h-5 w-5 animate-ping" />}
+            {isTransmitting && nodeData.state === 'NORMAL' && <Radio className="h-5 w-5 animate-ping" />}
           </button>
 
           <button 
@@ -268,7 +225,7 @@ export function SensorNode() {
               <div className="w-2 h-2 rounded-full bg-semantic-amber shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
               <span className="font-bold tracking-wide">SEND WARNING READING</span>
             </div>
-            {isTransmitting && simulatedState === 'WARNING' && <Radio className="h-5 w-5 animate-ping" />}
+            {isTransmitting && nodeData.state === 'WARNING' && <Radio className="h-5 w-5 animate-ping" />}
           </button>
 
           <button 
@@ -280,7 +237,7 @@ export function SensorNode() {
               <div className="w-2 h-2 rounded-full bg-semantic-red shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
               <span className="font-bold tracking-wide">SEND CRITICAL READING</span>
             </div>
-            {isTransmitting && simulatedState === 'CRITICAL' && <Radio className="h-5 w-5 animate-ping" />}
+            {isTransmitting && nodeData.state === 'CRITICAL' && <Radio className="h-5 w-5 animate-ping" />}
           </button>
         </div>
         
@@ -291,19 +248,9 @@ export function SensorNode() {
             <div className="flex items-center gap-1">HW: ESP32-REV2</div>
           </div>
           
-          {/* Unobtrusive reset for SIH Demo */}
-          <button 
-            onClick={() => {
-              commService.resetDemo();
-              // Reset local mock state as well
-              const defaultNode = mockNodes.find(n => n.id === 'MG-05') || mockNodes[0];
-              setNodeData(defaultNode);
-              setSimulatedState(defaultNode.state);
-            }}
-            className="px-2 py-1 border border-mine-border rounded hover:bg-mine-border/30 transition-colors"
-          >
-            DEMO RESET
-          </button>
+          <div className="text-semantic-cyan">
+             SIMULATOR
+          </div>
         </div>
       </div>
     </div>

@@ -23,21 +23,22 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export function TrendChart() {
+export function TrendChart({ selectedNodeId = 'MG-05' }: { selectedNodeId?: string }) {
   const { trendData } = useTelemetry();
+  const nodeTrendData = trendData[selectedNodeId] || [];
 
   return (
     <Card className="col-span-1 lg:col-span-2">
       <CardHeader className="pb-2 border-b border-mine-border/50">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <Activity className="text-semantic-cyan h-5 w-5" /> Node MG-05 Live Telemetry Trend
+            <Activity className="text-semantic-cyan h-5 w-5" /> Node {selectedNodeId} Live Telemetry Trend
           </CardTitle>
         </div>
       </CardHeader>
       <CardContent className="pt-6 h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+          <AreaChart data={nodeTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="colorTilt" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
