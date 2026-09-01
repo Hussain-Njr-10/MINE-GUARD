@@ -1,6 +1,10 @@
-import { Bell, Search, Wifi } from "lucide-react";
+import { Bell, Search, Wifi, Menu } from "lucide-react";
 
-export function TopHeader() {
+interface TopHeaderProps {
+  onMenuClick?: () => void;
+}
+
+export function TopHeader({ onMenuClick }: TopHeaderProps) {
   const currentDate = new Date().toLocaleString('en-US', { 
     weekday: 'short', 
     month: 'short', 
@@ -13,6 +17,12 @@ export function TopHeader() {
   return (
     <header className="h-16 bg-mine-dark border-b border-mine-border flex items-center justify-between px-4 md:px-6 sticky top-0 z-10 w-full overflow-x-hidden">
       <div className="flex items-center gap-2 md:gap-4 shrink-0">
+        <button 
+          className="lg:hidden p-1.5 -ml-1.5 text-mine-muted hover:text-white rounded-md"
+          onClick={onMenuClick}
+        >
+          <Menu className="h-5 w-5" />
+        </button>
         <div className="flex items-center gap-2">
           <div className="h-2.5 w-2.5 rounded-full bg-semantic-green animate-pulse"></div>
           <span className="text-sm text-mine-muted font-medium hidden sm:inline-block">System Online</span>
